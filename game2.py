@@ -49,7 +49,7 @@ def get_questions(theme: str = None) -> tuple[ list[dict], list[list[str]] ]:
                     "each question has 10 answers with the first 6 answers being the most popular ones. "
                     "Restrict your question to at most 60 characters long. "
                     "Do not use any text formatting in your response, "
-                    "do not include any numbers or symbols in the answers, if there are hyphens, change them to spaces. "
+                    "In the answers, do not include any numbers or symbols. "
                     "Use 'Question 1: ','Question 2: ','Question 3: ' to indicate each question, "
                     "then use a numbered list for the answers"
                     "Assign a total of 100 points to the first 6 answers, put them in a bracket after each answer, "
@@ -252,31 +252,56 @@ def draw_answer_hints():
     hint_block.blk_render(screen)
     hint_block.txt_render(screen, 275, 142)
 
+def longest_common_substring(s1: str, s2: str) -> str:
+    """Find the longest common substring between two strings"""
+    # Create a matrix to store lengths of longest common suffixes
+    m = [[0] * (len(s2) + 1) for _ in range(len(s1) + 1)]
+    longest = 0
+    end_pos = 0
+    
+    for i in range(1, len(s1) + 1):
+        for j in range(1, len(s2) + 1):
+            if s1[i-1].lower() == s2[j-1].lower():
+                m[i][j] = m[i-1][j-1] + 1
+                if m[i][j] > longest:
+                    longest = m[i][j]
+                    end_pos = i
+            else:
+                m[i][j] = 0
+                
+    return s1[end_pos-longest:end_pos] if longest > 0 else ""
+
 def check_answer(player_input: str):
     global questions, current_question, player_score, answer_used, feedback_text, feedback_timer
-    player_input = player_input.lower().strip()
-    
+    player_input = player_input.lower().replace(" ", "")    
     if not player_input:
         feedback_text = "Please enter an answer!"
         return False
     
-    if player_input in questions[current_question]["answer"]:
-        index = questions[current_question]["answer"].index(player_input)
+    max_score = -1
+    for i in range(len(questions[current_question]["answer"])):
+        substring = longest_common_substring(player_input, questions[current_question]["answer"][i])
+        score = len(substring)/len(questions[current_question]["answer"][i])
+        if score > max_score:
+            max_score = score
+            index = i  # Store the index of the best match
+
+    if max_score >= 0.8:
         if answer_used[index] != 1:
             player_score += questions[current_question]["points"][index]
             answer_used[index] = 1
             feedback_text = f"Correct! +{questions[current_question]['points'][index]} points"
-
             return True
         else:
             feedback_text = "Repeated answer!"
-
             return False
     else:
         feedback_text = "Wrong answer!"
         return False
 
+
 def draw_answers():
+    global oppo_answers, current_question
     # Draw only the answers that have been revealed
     a_text_list = questions[current_question]["answer"]
     a_points_list = questions[current_question]["points"]
@@ -289,7 +314,7 @@ def draw_answers():
             
             answer_block = TextBlock(
                 100, answer_y, 600, 40,
-                f"{answer.capitalize()} ({points} pts)",
+                oppo_answers[current_question][i] + f" ({points} pts)",
                 bg_color=(200, 255, 200),  # Light green background
                 font_size=24,
                 txt_color=(0, 100, 0))  # Dark green text
@@ -299,7 +324,7 @@ def draw_answers():
             answer_y += 45
 
 def draw_feedback():
-    global feedback_text, feedback_timer
+    global feedback_text, feedback_timer, user_input
     if feedback_timer > 0:
         # Create a temporary text block for the feedback
         feedback_block = TextBlock(
@@ -309,6 +334,16 @@ def draw_feedback():
             font_size=32,
             txt_color=(0, 0, 0)
         )
+        answer_block = TextBlock(
+            80, 450, 100, 30,
+            f"Your answer: {user_input}",
+            bg_color=(240, 240, 240),
+            font_size=32,
+            txt_color=(0, 0, 0)
+        )
+        answer_block.blk_render(screen)
+        answer_block.txt_render(screen, 80, 450)
+
         # Draw with different colors based on feedback type
         if "Correct" in feedback_text:
             feedback_block.txt_color = (0, 128, 0)  # Green
@@ -316,6 +351,21 @@ def draw_feedback():
             feedback_block.txt_color = (255, 0, 0)  # Red
         else:
             feedback_block.txt_color = (255, 165, 0)  # Orange
+        
+        feedback_block.blk_render(screen)
+        feedback_block.txt_render(screen, SCREEN_WIDTH // 2 - 150, 20)
+        feedback_timer -= 1  # Decrease the timer
+
+    
+    if feedback_timer > 0:
+        # Create a temporary text block for the feedback
+        feedback_block = TextBlock(
+            SCREEN_WIDTH // 2 - 150, 20, 300, 40,
+            feedback_text,
+            bg_color=(240, 240, 240),
+            font_size=32,
+            txt_color=(0, 0, 0)
+        )
         
         feedback_block.blk_render(screen)
         feedback_block.txt_render(screen, SCREEN_WIDTH // 2 - 150, 20)
@@ -356,7 +406,7 @@ def draw_timer():
 
 def start_new_question():
     global current_question, question_start_time, player_score, oppo_score, player_hist, oppo_hist
-    global answer_used, show_scoreboard
+    global answer_used, show_scoreboard, input_block
     
     # Reset question-related states
     question_start_time = pygame.time.get_ticks()  # Record start time in milliseconds
@@ -367,6 +417,7 @@ def start_new_question():
     oppo_score = 0
     answer_used = [0 for i in range(6)]
     current_question += 1
+    input_block.text = ""
     if current_question >= QUESTIONS_TOTAL: # last question ended, proceed to scoreboard
         show_scoreboard = True
 
@@ -435,7 +486,7 @@ def reset_game():
     screen.fill((0,0,0))
     temp = TextBlock((800-250)//2, (600-50)//2, 250, 50, "Game Loading... Please wait", txt_color=(255,255,255))
     temp.txt_render(screen, (800-250)//2, (600-50)//2) # loading screen not working?
-
+    pygame.display.flip()
     (questions, oppo_answers) = get_questions()
     print(questions)
     print(oppo_answers)
@@ -455,6 +506,7 @@ if __name__ == "__main__":
             if not show_menu and not show_scoreboard:  # during game
                 player_input = input_block.handle_event(event)
                 if player_input != None:
+                    user_input = player_input  # Get the input text
                     check_answer(player_input)
                     feedback_timer = feedback_duration
             
@@ -470,12 +522,13 @@ if __name__ == "__main__":
                     show_menu = True
                     reset_game()
         
+        check_timer()
+
         if show_menu:
             render_menu()
         elif show_scoreboard:
             render_scoreboard()
         else:
-            check_timer()
             render_game()
 
         pygame.display.flip()
