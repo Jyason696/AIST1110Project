@@ -323,7 +323,7 @@ def draw_answers():
             answer_y += 45
 
 def draw_feedback():
-    global feedback_text, feedback_timer
+    global feedback_text, feedback_timer, user_input
     if feedback_timer > 0:
         # Create a temporary text block for the feedback
         feedback_block = TextBlock(
@@ -333,6 +333,16 @@ def draw_feedback():
             font_size=32,
             txt_color=(0, 0, 0)
         )
+        answer_block = TextBlock(
+            80, 450, 100, 30,
+            f"Your answer: {user_input}",
+            bg_color=(240, 240, 240),
+            font_size=32,
+            txt_color=(0, 0, 0)
+        )
+        answer_block.blk_render(screen)
+        answer_block.txt_render(screen, 80, 450)
+
         # Draw with different colors based on feedback type
         if "Correct" in feedback_text:
             feedback_block.txt_color = (0, 128, 0)  # Green
@@ -340,6 +350,21 @@ def draw_feedback():
             feedback_block.txt_color = (255, 0, 0)  # Red
         else:
             feedback_block.txt_color = (255, 165, 0)  # Orange
+        
+        feedback_block.blk_render(screen)
+        feedback_block.txt_render(screen, SCREEN_WIDTH // 2 - 150, 20)
+        feedback_timer -= 1  # Decrease the timer
+
+    
+    if feedback_timer > 0:
+        # Create a temporary text block for the feedback
+        feedback_block = TextBlock(
+            SCREEN_WIDTH // 2 - 150, 20, 300, 40,
+            feedback_text,
+            bg_color=(240, 240, 240),
+            font_size=32,
+            txt_color=(0, 0, 0)
+        )
         
         feedback_block.blk_render(screen)
         feedback_block.txt_render(screen, SCREEN_WIDTH // 2 - 150, 20)
@@ -479,6 +504,7 @@ if __name__ == "__main__":
             if not show_menu and not show_scoreboard:  # during game
                 player_input = input_block.handle_event(event)
                 if player_input != None:
+                    user_input = player_input  # Get the input text
                     check_answer(player_input)
                     feedback_timer = feedback_duration
             
