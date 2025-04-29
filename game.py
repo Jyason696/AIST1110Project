@@ -8,14 +8,23 @@ import os
 class Block:
     def __init__(self, x, y, width, height, bg_color):
         self.rect = pygame.Rect(x, y, width, height)
-        self.bg_color = bg_color
+        self.bg_color = self.curr_color = bg_color
+
+
+
+    def update_color(self, hover, new_color = (192, 192, 192)):
+        if hover:
+            self.curr_color = new_color
+        else:
+            self.curr_color = self.bg_color
 
     def blk_render(self, screen):
-        pygame.draw.rect(screen, self.bg_color, self.rect)
+        pygame.draw.rect(screen, self.curr_color, self.rect)
+
 
 
 class TextBlock(Block):  # Ensure TextBlock inherits from Block
-    def __init__(self, x, y, width, height, text, bg_color=(0, 0, 0), fontname=None, font_size=36, txt_color=(255, 255, 255)):
+    def __init__(self, x, y, width, height, text, bg_color=(160, 160, 160), fontname=None, font_size=36, txt_color=(0, 0, 0)):
         super().__init__(x, y, width, height, bg_color)  # Pass required arguments to Block's __init__
         self.font = pygame.font.Font(fontname, font_size)
         self.text = text  # Store the text
@@ -28,25 +37,18 @@ class TextBlock(Block):  # Ensure TextBlock inherits from Block
         self.rendered_text = self.font.render(self.text, True, self.txt_color)
 
     def txt_render(self, screen, x, y):
-        super().blk_render(screen)  # Call the parent class render method
         self.text_rect = self.rendered_text.get_rect(center=self.rect.center)  # Update text position
         screen.blit(self.rendered_text, self.text_rect)
 
 class Button(Block):
     def __init__(self, x, y, width, height, color=(160, 160, 160)):
         super().__init__(x, y, width, height, color)
-        self.hover_color = self.bg_color + (42, 42, 42)
         self.activated = True
         self.color = self.bg_color
 
-    def check_collide(self, point):
-        return self.rect.collidepoint(point)
-
     def check_hover(self, mouse_pos):
-        if self.rect.collidepoint(mouse_pos):
-            self.color = self.hover_color
-        else:
-            self.color = self.bg_color
+        return self.rect.collidepoint(mouse_pos)
+
 
     def is_clicked(self, mouse_pos, mouse_pressed):
         return self.rect.collidepoint(mouse_pos) and mouse_pressed[0] == 1 and self.activated
@@ -121,10 +123,10 @@ if __name__ == "__main__":
             button_text = font.render('PvE mode', True, (0, 0, 0))
             screen.blit(button_text, (button_rect.x + 10, button_rect.y + 10))"""
             PvE_sign = TextBlock((800 - 250) // 2, 600 - 80, 250, 50, "PvE mode")
-            PvE_sign.txt_render(screen, (800 - 250) // 2 + 10, 600 - 80 + 10)
-            print("hI")
             PvE_button = Button((800 - 250) // 2, 600 - 80, 250, 50)
-            PvE_button.check_hover(pygame.mouse.get_pos())
+            PvE_sign.update_color(PvE_button.check_hover(pygame.mouse.get_pos()))
+            PvE_sign.blk_render(screen)
+            PvE_sign.txt_render(screen, (800 - 250) // 2 + 10, 600 - 80 + 10)
         else:
             screen.fill((0, 0, 0))
 
