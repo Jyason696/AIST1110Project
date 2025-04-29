@@ -6,18 +6,21 @@ import os
 from dotenv import load_dotenv
 from openai import AzureOpenAI
 
-def get_questions(theme: str = None) -> list[dict]:
+def get_questions(theme: str = None) -> tuple[ list[dict], list[list[str]] ]:
     """
     Generate questions and answers based on a specified theme
 
     Args:
         theme (str, optional): Theme for the questions. Defaults to None.
 
-    Returns:
+    Returns tuple of two elements:
+
         list[dict]: A list of 3 question dictionaries, each containing:
             - question (str): The question
             - answer (list[str]): List of the 6 answers in lowercase
             - points (list[int]): Corresponding points for each answer
+
+        list[list[str]]: 3 lists of strings, they are the list of guesses used by the AI opponent
     """
     load_dotenv()
     AZURE_API_KEY = os.getenv("AZURE_API_KEY")
@@ -44,7 +47,9 @@ def get_questions(theme: str = None) -> list[dict]:
                     + theme_prompt
                     + ","
                     "each question has 10 answers with the first 6 answers being the most popular ones. "
-                    "Do not use any text formatting in your response."
+                    "Restrict your question to at most 60 characters long. "
+                    "Do not use any text formatting in your response, "
+                    "do not include any numbers or symbols in the answers, if there are hyphens, change them to spaces. "
                     "Use 'Question 1: ','Question 2: ','Question 3: ' to indicate each question, "
                     "then use a numbered list for the answers"
                     "Assign a total of 100 points to the first 6 answers, put them in a bracket after each answer, "
@@ -58,13 +63,21 @@ def get_questions(theme: str = None) -> list[dict]:
     res = res.split("\n")
 
     ret = list()
-    temp = dict()  # store current question
+    ret2 = list()
+    temp = dict()  # Store current question
+    oppo_list = list()  # Store all answers of current question
     for line in res:
         if line.find("Question") != -1:
+            if len(oppo_list)>0:
+                ret2.append(oppo_list)
+            oppo_list = list()
             temp = dict()  # start a new question
             text = line[12:]
             temp["question"] = text
         else:
+            line = line.strip()
+            if len(line) < 1:  # empty line
+                continue
             answer = ""
             points = 0
             text = line.split()
@@ -74,9 +87,16 @@ def get_questions(theme: str = None) -> list[dict]:
                 elif word[0] == "(":
                     points = int(word[1:-1])
             answer = answer.lower()  # convert to lowercase
+            
             if not "answer" in temp:
                 temp["answer"] = list()
                 temp["points"] = list()
+
+            if len(temp["answer"]) == 6: # handle oppo_list, keep original case and spaces
+                oppo_list.append(line[line.find(" ")+1:])
+            else:
+                oppo_list.append(line[line.find(" ")+1:line.rfind(" ")])
+            
             if len(temp["answer"]) == 5:
                 temp["answer"].append(answer)
                 temp["points"].append(points)
@@ -84,7 +104,9 @@ def get_questions(theme: str = None) -> list[dict]:
             elif len(temp["answer"]) < 5:
                 temp["answer"].append(answer)
                 temp["points"].append(points)
-    return ret
+
+    ret2.append(oppo_list)
+    return (ret, ret2)
 
 
 class Block:
@@ -100,7 +122,6 @@ class Block:
 
     def blk_render(self, screen):
         pygame.draw.rect(screen, self.curr_color, self.rect)
-
 
 
 class TextBlock(Block):  # Ensure TextBlock inherits from Block
@@ -190,17 +211,23 @@ show_scoreboard = False
 
 # Game state
 questions = dict()
+oppo_answers = list()
 current_question = -1  # Game not yet started
 
 player_score = 0
 oppo_score = 0
 answer_used = [0 for i in range(6)]  # Which answers in currect question is used already
 
+feedback_text = ""
+feedback_timer = 0
+feedback_duration = 60
+
 player_hist = list() #  list of scores in previous rounds
 oppo_hist = list()
 QUESTION_TIME_LIMIT = 20  # seconds for each question
 question_start_time = 0
 QUESTIONS_TOTAL = 3
+OPPO_TIME_LIMIT = 3
 
 # Declare buttons
 PvE_sign = TextBlock((800 - 250) // 2, 600 - 80, 250, 50, "PvE mode")
@@ -210,17 +237,89 @@ to_menu_button = Button((800 - 250) // 2 // 2, 500, 250, 50)
 to_menu_button.activated = False
 
 # Functions
-def check_answer(player_input:str):
-    # check answer, update player_score and answer_used
-    global questions, current_question, player_score, answer_used
-    player_input = player_input.replace(" ", "")  # remove all spaces
-    player_input = player_input.lower()  # convert to lowercase
+def draw_answer_hints():
+    # Show how many answers remain (but not what they are)
+    remaining = len(questions[current_question]["answer"]) - sum(answer_used[i] for i in range(6))
+    hint_text = f"Answers remaining: {remaining}"
+    
+    hint_block = TextBlock(
+        275, 142, 250, 30,
+        hint_text,
+        bg_color=(240, 240, 240),
+        font_size=24,
+        txt_color=(100, 100, 100))
+    
+    hint_block.blk_render(screen)
+    hint_block.txt_render(screen, 275, 142)
+
+def check_answer(player_input: str):
+    global questions, current_question, player_score, answer_used, feedback_text, feedback_timer
+    player_input = player_input.lower().strip()
+    
+    if not player_input:
+        feedback_text = "Please enter an answer!"
+        return False
+    
     if player_input in questions[current_question]["answer"]:
         index = questions[current_question]["answer"].index(player_input)
         if answer_used[index] != 1:
             player_score += questions[current_question]["points"][index]
-            answer_used[index]=1
-            print("update score",player_score)
+            answer_used[index] = 1
+            feedback_text = f"Correct! +{questions[current_question]['points'][index]} points"
+
+            return True
+        else:
+            feedback_text = "Repeated answer!"
+
+            return False
+    else:
+        feedback_text = "Wrong answer!"
+        return False
+
+def draw_answers():
+    # Draw only the answers that have been revealed
+    a_text_list = questions[current_question]["answer"]
+    a_points_list = questions[current_question]["points"]
+    
+    answer_y = 180
+    for i in range(len(questions[current_question]["answer"])):
+        if answer_used[i] == 1:
+            answer = a_text_list[i]
+            points = a_points_list[i]
+            
+            answer_block = TextBlock(
+                100, answer_y, 600, 40,
+                f"{answer.capitalize()} ({points} pts)",
+                bg_color=(200, 255, 200),  # Light green background
+                font_size=24,
+                txt_color=(0, 100, 0))  # Dark green text
+            
+            answer_block.blk_render(screen)
+            answer_block.txt_render(screen, 100, answer_y)
+            answer_y += 45
+
+def draw_feedback():
+    global feedback_text, feedback_timer
+    if feedback_timer > 0:
+        # Create a temporary text block for the feedback
+        feedback_block = TextBlock(
+            SCREEN_WIDTH // 2 - 150, 20, 300, 40,
+            feedback_text,
+            bg_color=(240, 240, 240),
+            font_size=32,
+            txt_color=(0, 0, 0)
+        )
+        # Draw with different colors based on feedback type
+        if "Correct" in feedback_text:
+            feedback_block.txt_color = (0, 128, 0)  # Green
+        elif "Wrong" in feedback_text:
+            feedback_block.txt_color = (255, 0, 0)  # Red
+        else:
+            feedback_block.txt_color = (255, 165, 0)  # Orange
+        
+        feedback_block.blk_render(screen)
+        feedback_block.txt_render(screen, SCREEN_WIDTH // 2 - 150, 20)
+        feedback_timer -= 1  # Decrease the timer
 
 def draw_scores():
     # draw text for player and opponent scores
@@ -298,6 +397,9 @@ def render_game():
     draw_scores()
     draw_question()
     draw_timer()
+    draw_answers()
+    draw_answer_hints()
+    draw_feedback()
 
 def render_scoreboard():
     global player_hist, oppo_hist, QUESTIONS_TOTAL
@@ -329,13 +431,14 @@ def render_scoreboard():
     to_menu_sign.txt_render(screen, (800 - 250) // 2 + 10, 600 - 80 + 10)
     
 def reset_game():
-    global questions, current_question, player_hist, oppo_hist
+    global questions, current_question, player_hist, oppo_hist, oppo_answers
     screen.fill((0,0,0))
     temp = TextBlock((800-250)//2, (600-50)//2, 250, 50, "Game Loading... Please wait", txt_color=(255,255,255))
     temp.txt_render(screen, (800-250)//2, (600-50)//2) # loading screen not working?
 
-    questions = get_questions()
+    (questions, oppo_answers) = get_questions()
     print(questions)
+    print(oppo_answers)
     current_question = -1  
     player_hist = list() 
     oppo_hist = list()
@@ -353,6 +456,7 @@ if __name__ == "__main__":
                 player_input = input_block.handle_event(event)
                 if player_input != None:
                     check_answer(player_input)
+                    feedback_timer = feedback_duration
             
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if PvE_button.is_clicked(event.pos, event.button == 1):  # Left mouse button
@@ -366,13 +470,12 @@ if __name__ == "__main__":
                     show_menu = True
                     reset_game()
         
-        check_timer()
-        
         if show_menu:
             render_menu()
         elif show_scoreboard:
             render_scoreboard()
         else:
+            check_timer()
             render_game()
 
         pygame.display.flip()
