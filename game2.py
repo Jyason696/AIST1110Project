@@ -189,14 +189,23 @@ screen.fill((255, 255, 255))
 pygame.display.set_caption("Guess Their Answer!")
 input_block = TextInputBlock(50, 50, 700, 50, font_size=48, color=(0, 0, 0), bg_color=(200, 200, 200))
 show_menu = True
-questions = get_questions()
-print(questions)
+show_scoreboard = False
 
 # Game state
-current_question = 0
+questions = get_questions()
+print(questions)
+current_question = -1
+
 player_score = 0
 oppo_score = 0
 answer_used = [0 for i in range(6)]
+
+player_hist = list() #  list of scores in previous rounds
+oppo_hist = list()
+QUESTION_TIME_LIMIT = 20  # seconds for each question
+question_start_time = 0
+timer_active = False
+QUESTIONS_TOTAL = 3
 
 # Functions
 def check_answer(player_input:str):
@@ -213,16 +222,19 @@ def draw_scores():
     # draw text for player and opponent scores
     player_text = f"You: {player_score}"
     oppo_text = f"Opponent: {oppo_score}"
-    
+    Progress_bar = Block(80, 600 - 80, 800 - 80 - 80, 50, (160, 160, 160))
+    player_bar = Block(80, 600 - 80, (800 - 80 - 80)*player_score/100, 50, (255, 0, 0))
+    opponent_bar = Block(800 - (800 - 80 - 80)*oppo_score/100 - 80, 600 - 80, (800 - 80 - 80)*oppo_score/100, 50, (0, 0, 255))
     player_sign = TextBlock(80, 600 - 80, 250, 50, player_text)
     oppo_sign = TextBlock(800 - 250 - 80, 600 - 80, 250, 50, oppo_text)
-    player_sign.blk_render(screen)
-    oppo_sign.blk_render(screen)
+    Progress_bar.blk_render(screen)
+    player_bar.blk_render(screen)
+    opponent_bar.blk_render(screen)
     player_sign.txt_render(screen, 80 + 10, 600 - 80 + 10)
     oppo_sign.txt_render(screen, 800 - 250 - 80 + 10, 600 - 80 + 10)
 
 def draw_question():
-    # draw text for question and answers
+    # draw text for question and used answers
     q_text = questions[current_question]["question"]
     a_text_list = questions[current_question]["answer"]
 
@@ -231,46 +243,93 @@ def draw_question():
     question_sign = TextBlock(cur_x, cur_y, 250, 50, q_text)
     question_sign.txt_render(screen, cur_x, cur_y)
 
+def draw_timer():
+    global current_question, question_start_time, timer_active
+    current_time = pygame.time.get_ticks()
+    elapsed_seconds = (current_time - question_start_time) // 1000  
+    time_left = QUESTION_TIME_LIMIT - elapsed_seconds
+    time_sign = TextBlock((SCREEN_WIDTH-250)//2, SCREEN_HEIGHT - 160, 250, 50, f"Time left: {time_left}")
+    time_sign.txt_render(screen, (SCREEN_WIDTH-250)//2, SCREEN_HEIGHT - 160)
 
+def start_new_question():
+    global current_question, question_start_time, timer_active, player_score, oppo_score, player_hist, oppo_hist
+    global answer_used, show_scoreboard
+    
+    # Reset question-related states
+    question_start_time = pygame.time.get_ticks()  # Record start time in milliseconds
+    timer_active = True
+    if current_question>=0:
+        player_hist.append(player_score)
+        oppo_hist.append(oppo_score)
+    player_score = 0
+    oppo_score = 0
+    answer_used = [0 for i in range(6)]
+    current_question += 1
+    if current_question >= QUESTIONS_TOTAL: # last question ended, proceed to scoreboard
+        show_scoreboard = True
+
+def render_menu():
+    """
+    button_rect = pygame.Rect((800 - 250) // 2, 600 - 80, 250, 50)
+    pygame.draw.rect(screen, pygame.Color("grey"), button_rect)
+    font = pygame.font.Font(None, 36)
+    button_text = font.render('PvE mode', True, (0, 0, 0))
+    screen.blit(button_text, (button_rect.x + 10, button_rect.y + 10))
+    """
+    PvE_sign = TextBlock((800 - 250) // 2, 600 - 80, 250, 50, "PvE mode")
+    PvE_button = Button((800 - 250) // 2, 600 - 80, 250, 50)
+    PvE_sign.update_color(PvE_button.check_hover(pygame.mouse.get_pos()))
+    PvE_sign.blk_render(screen)
+    PvE_sign.txt_render(screen, (800 - 250) // 2 + 10, 600 - 80 + 10)
+
+def render_game():
+    screen.fill((255, 255, 255))
+    input_block.render(screen, (0, 0, 0), 2)
+    draw_scores()
+    draw_question()
+    draw_timer()
+
+def render_scoreboard():
+    screen.fill((255, 255, 255))
+    temp = TextBlock((800 - 250) // 2, 600 - 80, 250, 50, "this is scoreboard")
+    temp.txt_render(screen, (800 - 250) // 2 + 10, 600 - 80 + 10)
+    pass
+    
 
 if __name__ == "__main__":
     running = True
+    PvE_sign = TextBlock((800 - 250) // 2, 600 - 80, 250, 50, "PvE mode")
+    PvE_button = Button((800 - 250) // 2, 600 - 80, 250, 50)
     while running:
         clock.tick(FPS)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+            
             if not show_menu:
                 player_input = input_block.handle_event(event)
                 if player_input != None:
                     check_answer(player_input)
+            
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if PvE_button.is_clicked(event.pos, event.button == 1):  # Left mouse button
                     print("Button clicked!")
                     PvE_button.activated = False
                     show_menu = False
+                    start_new_question()
                     # Start the game
-
+        
+        current_time = pygame.time.get_ticks()
+        elapsed_seconds = (current_time - question_start_time) // 1000  # Get time elapsed since question started
+        if timer_active and elapsed_seconds >= QUESTION_TIME_LIMIT:
+            start_new_question()
+        
         if show_menu:
-            """
-            button_rect = pygame.Rect((800 - 250) // 2, 600 - 80, 250, 50)
-            pygame.draw.rect(screen, pygame.Color("grey"), button_rect)
-            font = pygame.font.Font(None, 36)
-            button_text = font.render('PvE mode', True, (0, 0, 0))
-            screen.blit(button_text, (button_rect.x + 10, button_rect.y + 10))"""
-            PvE_sign = TextBlock((800 - 250) // 2, 600 - 80, 250, 50, "PvE mode")
-            PvE_button = Button((800 - 250) // 2, 600 - 80, 250, 50)
-            PvE_sign.update_color(PvE_button.check_hover(pygame.mouse.get_pos()))
-            PvE_sign.blk_render(screen)
-            PvE_sign.txt_render(screen, (800 - 250) // 2 + 10, 600 - 80 + 10)
+            render_menu()
+        elif show_scoreboard:
+            render_scoreboard()
         else:
-            # Game Start
-            screen.fill((255, 255, 255))
-            input_block.render(screen, (0, 0, 0), 2)
-            draw_scores()
-            draw_question()
-
-
+            render_game()
 
         pygame.display.flip()
 
