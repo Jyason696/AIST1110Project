@@ -44,7 +44,6 @@ def get_questions(theme: str = None) -> list[dict]:
                     + theme_prompt
                     + ","
                     "each question has 10 answers with the first 6 answers being the most popular ones. "
-                    "Restrict your answer to only single word only"
                     "Do not use any text formatting in your response."
                     "Use 'Question 1: ','Question 2: ','Question 3: ' to indicate each question, "
                     "then use a numbered list for the answers"
@@ -71,12 +70,10 @@ def get_questions(theme: str = None) -> list[dict]:
             text = line.split()
             for word in text:
                 if word.isalpha():
-                    if answer != "":
-                        answer += " "
-                    answer += word
+                    answer += word  # note that there are no spaces between words
                 elif word[0] == "(":
                     points = int(word[1:-1])
-            answer = answer.lower()
+            answer = answer.lower()  # convert to lowercase
             if not "answer" in temp:
                 temp["answer"] = list()
                 temp["points"] = list()
@@ -125,7 +122,7 @@ class TextBlock(Block):  # Ensure TextBlock inherits from Block
 class Button(Block):
     def __init__(self, x, y, width, height, color=(160, 160, 160)):
         super().__init__(x, y, width, height, color)
-        self.activated = True
+        self.activated = True  # activated when declared
 
     def check_hover(self, mouse_pos):
         return self.rect.collidepoint(mouse_pos)
@@ -143,7 +140,7 @@ class TextInputBlock(Block):
         self.font_size = font_size
         self.color = color
         self.font = pygame.font.Font(None, self.font_size)
-        self.text = "Hi"
+        self.text = ""
         self.rendered_text = self.font.render(self.text, True, self.color)
         self.active = False
 
@@ -192,25 +189,32 @@ show_menu = True
 show_scoreboard = False
 
 # Game state
-questions = get_questions()
-print(questions)
-current_question = -1
+questions = dict()
+current_question = -1  # Game not yet started
 
 player_score = 0
 oppo_score = 0
-answer_used = [0 for i in range(6)]
+answer_used = [0 for i in range(6)]  # Which answers in currect question is used already
 
 player_hist = list() #  list of scores in previous rounds
 oppo_hist = list()
 QUESTION_TIME_LIMIT = 20  # seconds for each question
 question_start_time = 0
-timer_active = False
 QUESTIONS_TOTAL = 3
+
+# Declare buttons
+PvE_sign = TextBlock((800 - 250) // 2, 600 - 80, 250, 50, "PvE mode")
+PvE_button = Button((800 - 250) // 2, 600 - 80, 250, 50)
+to_menu_sign = TextBlock((800 - 250) // 2, 500, 250, 50, "Return to Menu")
+to_menu_button = Button((800 - 250) // 2 // 2, 500, 250, 50)
+to_menu_button.activated = False
 
 # Functions
 def check_answer(player_input:str):
+    # check answer, update player_score and answer_used
     global questions, current_question, player_score, answer_used
-    player_input = player_input.lower()
+    player_input = player_input.replace(" ", "")  # remove all spaces
+    player_input = player_input.lower()  # convert to lowercase
     if player_input in questions[current_question]["answer"]:
         index = questions[current_question]["answer"].index(player_input)
         if answer_used[index] != 1:
@@ -244,7 +248,7 @@ def draw_question():
     question_sign.txt_render(screen, cur_x, cur_y)
 
 def draw_timer():
-    global current_question, question_start_time, timer_active
+    global current_question, question_start_time
     current_time = pygame.time.get_ticks()
     elapsed_seconds = (current_time - question_start_time) // 1000  
     time_left = QUESTION_TIME_LIMIT - elapsed_seconds
@@ -252,12 +256,11 @@ def draw_timer():
     time_sign.txt_render(screen, (SCREEN_WIDTH-250)//2, SCREEN_HEIGHT - 160)
 
 def start_new_question():
-    global current_question, question_start_time, timer_active, player_score, oppo_score, player_hist, oppo_hist
+    global current_question, question_start_time, player_score, oppo_score, player_hist, oppo_hist
     global answer_used, show_scoreboard
     
     # Reset question-related states
     question_start_time = pygame.time.get_ticks()  # Record start time in milliseconds
-    timer_active = True
     if current_question>=0:
         player_hist.append(player_score)
         oppo_hist.append(oppo_score)
@@ -268,7 +271,14 @@ def start_new_question():
     if current_question >= QUESTIONS_TOTAL: # last question ended, proceed to scoreboard
         show_scoreboard = True
 
+def check_timer():
+    current_time = pygame.time.get_ticks()
+    elapsed_seconds = (current_time - question_start_time) // 1000  # Get time elapsed since question started
+    if elapsed_seconds >= QUESTION_TIME_LIMIT:
+        start_new_question()
+
 def render_menu():
+    global PvE_sign, PvE_button
     """
     button_rect = pygame.Rect((800 - 250) // 2, 600 - 80, 250, 50)
     pygame.draw.rect(screen, pygame.Color("grey"), button_rect)
@@ -276,8 +286,8 @@ def render_menu():
     button_text = font.render('PvE mode', True, (0, 0, 0))
     screen.blit(button_text, (button_rect.x + 10, button_rect.y + 10))
     """
-    PvE_sign = TextBlock((800 - 250) // 2, 600 - 80, 250, 50, "PvE mode")
-    PvE_button = Button((800 - 250) // 2, 600 - 80, 250, 50)
+    screen.fill((255, 255, 255))
+    PvE_button.activated = True
     PvE_sign.update_color(PvE_button.check_hover(pygame.mouse.get_pos()))
     PvE_sign.blk_render(screen)
     PvE_sign.txt_render(screen, (800 - 250) // 2 + 10, 600 - 80 + 10)
@@ -290,39 +300,73 @@ def render_game():
     draw_timer()
 
 def render_scoreboard():
+    global player_hist, oppo_hist, QUESTIONS_TOTAL
+    global show_menu, show_scoreboard
+    global to_menu_sign, to_menu_button
+
+    def draw_text(text: str, x, y):
+        temp = TextBlock(x, y, 250, 50, text)
+        temp.txt_render(screen, x, y)
+
     screen.fill((255, 255, 255))
-    temp = TextBlock((800 - 250) // 2, 600 - 80, 250, 50, "this is scoreboard")
-    temp.txt_render(screen, (800 - 250) // 2 + 10, 600 - 80 + 10)
-    pass
+    str_list = ["Question 1","Question 2","Question 3","Total"]
+    y_list = [100, 200, 300, 400]
+    x_left = (800-250) // 4
+    x_mid = (800-250) // 4 * 2
+    x_right = (800-250) // 4 * 3
+    for i in range(QUESTIONS_TOTAL+1):
+        if i==QUESTIONS_TOTAL: # show total score
+            draw_text(str(sum(player_hist)), x_left, y_list[i])
+            draw_text(str_list[i], x_mid, y_list[i])
+            draw_text(str(sum(oppo_hist)), x_right, y_list[i])
+        else:
+            draw_text(str(player_hist[i]), x_left, y_list[i])
+            draw_text(str_list[i], x_mid, y_list[i])
+            draw_text(str(oppo_hist[i]), x_right, y_list[i])
+    to_menu_button.activated = True
+    to_menu_sign.update_color(to_menu_button.check_hover(pygame.mouse.get_pos()))
+    to_menu_sign.blk_render(screen)
+    to_menu_sign.txt_render(screen, (800 - 250) // 2 + 10, 600 - 80 + 10)
     
+def reset_game():
+    global questions, current_question, player_hist, oppo_hist
+    screen.fill((0,0,0))
+    temp = TextBlock((800-250)//2, (600-50)//2, 250, 50, "Game Loading... Please wait", txt_color=(255,255,255))
+    temp.txt_render(screen, (800-250)//2, (600-50)//2) # loading screen not working?
+
+    questions = get_questions()
+    print(questions)
+    current_question = -1  
+    player_hist = list() 
+    oppo_hist = list()
 
 if __name__ == "__main__":
     running = True
-    PvE_sign = TextBlock((800 - 250) // 2, 600 - 80, 250, 50, "PvE mode")
-    PvE_button = Button((800 - 250) // 2, 600 - 80, 250, 50)
+    reset_game()
     while running:
         clock.tick(FPS)
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
             
-            if not show_menu:
+            if not show_menu and not show_scoreboard:  # during game
                 player_input = input_block.handle_event(event)
                 if player_input != None:
                     check_answer(player_input)
             
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if PvE_button.is_clicked(event.pos, event.button == 1):  # Left mouse button
-                    print("Button clicked!")
                     PvE_button.activated = False
                     show_menu = False
+                    show_scoreboard = False
                     start_new_question()
-                    # Start the game
+                if to_menu_button.is_clicked(event.pos, event.button == 1): 
+                    to_menu_button.activated = False
+                    show_scoreboard = False
+                    show_menu = True
+                    reset_game()
         
-        current_time = pygame.time.get_ticks()
-        elapsed_seconds = (current_time - question_start_time) // 1000  # Get time elapsed since question started
-        if timer_active and elapsed_seconds >= QUESTION_TIME_LIMIT:
-            start_new_question()
+        check_timer()
         
         if show_menu:
             render_menu()
