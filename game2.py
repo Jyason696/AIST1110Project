@@ -6,12 +6,12 @@ import os
 from dotenv import load_dotenv
 from openai import AzureOpenAI
 
+
 def get_questions(theme: str = None) -> tuple[ list[dict], list[list[str]] ]:
     """
-    Generate questions and answers based on a specified theme
+    Generate questions and answers based on a specified theme(optional)
 
-    Args:
-        theme (str, optional): Theme for the questions. Defaults to None.
+    Arg: theme, Theme for the questions. Defaults to None.
 
     Returns tuple of two elements:
 
@@ -196,6 +196,55 @@ class TextInputBlock(Block):
         rendered_text = self.font.render(self.text, True, self.color)
         screen.blit(rendered_text, (self.rect.topleft[0] + 5, self.rect.topleft[1] + 5))
 
+class ImageSprite( pygame.sprite.Sprite ):              
+    """Sprite class that supports image update and displaying textbox"""
+    def __init__( self, x, y, img ):     
+        pygame.sprite.Sprite.__init__(self)      
+        self.image = img
+        self.rect  = self.image.get_rect()
+        self.rect.center = ( x, y )
+        self.textbox = None     
+        self.text_duration = 0   # Time left until textbox disappear (in miliseconds)
+        self.text_offset = 15   # Space between sprite and textbox
+
+    def talk( self, text, duration = 120, dir_right=True, bg_color = (160, 160, 160), txt_color = (0, 0, 0)):
+        """
+        """
+        test_font = pygame.font.Font(None, 28)
+        text_width, text_height = test_font.size(text)
+        text_width += 50
+        text_height += 30
+        
+        if dir_right:
+            x_pos = self.rect.right + self.text_offset
+        else:
+            x_pos = self.rect.left - text_width - self.text_offset
+            
+        y_pos = self.rect.top + text_height//2
+        
+        self.textbox = TextBlock(
+            x=x_pos,
+            y=y_pos,
+            width=text_width,
+            height=text_height,
+            text=text,
+            bg_color=bg_color,
+            txt_color=txt_color
+        )
+        self.text_duration = duration
+        self.text_dir_right = dir_right
+
+    def update( self, screen, img=None ):   
+        if img != None:
+            self.image = img
+        screen.blit(self.image, self.rect)
+        if self.textbox and self.text_duration > 0:
+            self.textbox.blk_render(screen)
+            self.textbox.txt_render(screen, self.textbox.rect.centerx, self.textbox.rect.centery)
+            self.text_duration -= 1
+            if self.text_duration <= 0:
+                self.textbox = None
+
 # Initialization
 pygame.init()
 clock = pygame.time.Clock()
@@ -235,6 +284,18 @@ PvE_button = Button((800 - 250) // 2, 600 - 80, 250, 50)
 to_menu_sign = TextBlock((800 - 250) // 2, 500, 250, 50, "Return to Menu")
 to_menu_button = Button((800 - 250) // 2 // 2, 500, 250, 50)
 to_menu_button.activated = False
+
+# Declare sprites
+player_image   = pygame.image.load( 'testsprite.png' ).convert()
+player_sprite = ImageSprite(100, 400, player_image)
+oppo_image   = pygame.image.load( 'testsprite.png' ).convert()
+oppo_sprite = ImageSprite(700, 400, oppo_image)
+
+# Declare colors
+LIGHT_BLUE = (50, 160, 250)
+BLUE = (10, 10, 250)
+LIGHT_RED = (255, 125, 125)
+RED = (250, 10, 10)
 
 # Functions
 def draw_answer_hints():
@@ -480,6 +541,11 @@ def render_scoreboard():
     to_menu_sign.update_color(to_menu_button.check_hover(pygame.mouse.get_pos()))
     to_menu_sign.blk_render(screen)
     to_menu_sign.txt_render(screen, (800 - 250) // 2 + 10, 600 - 80 + 10)
+
+def render_sprites():
+    global screen, player_sprite, oppo_sprite
+    player_sprite.update(screen)
+    oppo_sprite.update(screen)
     
 def reset_game():
     global questions, current_question, player_hist, oppo_hist, oppo_answers
@@ -509,6 +575,7 @@ if __name__ == "__main__":
                     user_input = player_input  # Get the input text
                     check_answer(player_input)
                     feedback_timer = feedback_duration
+                    player_sprite.talk(player_input, bg_color=LIGHT_BLUE, txt_color=BLUE)
             
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if PvE_button.is_clicked(event.pos, event.button == 1):  # Left mouse button
@@ -530,6 +597,7 @@ if __name__ == "__main__":
             render_scoreboard()
         else:
             render_game()
+        render_sprites()
 
         pygame.display.flip()
 
