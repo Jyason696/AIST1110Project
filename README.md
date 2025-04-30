@@ -12,3 +12,5 @@ This is the project done by group 6
 8. After three round game will stop
 9. User can choose to return to the menu by clicking the button appear
 10. To exit the game, press the x button on the up right button
+
+#Resources used
