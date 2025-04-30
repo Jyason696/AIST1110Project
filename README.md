@@ -14,3 +14,5 @@ This is the project done by group 6
 10. To exit the game, press the x button on the up right button
 
 #Resources used
+Sprite images: https://prsk-chibi-viewer.vercel.app/
+Background image: https://devforum.roblox.com/t/showing-my-newest-showcase-empty-sekai/1987459
