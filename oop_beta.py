@@ -5,6 +5,7 @@ import sys
 import os
 from dotenv import load_dotenv
 from openai import AzureOpenAI
+from pygame.transform import smoothscale_by
 
 class Block:
     def __init__(self, x, y, width, height, bg_color):
@@ -88,6 +89,181 @@ class TextInputBlock(Block):
         rendered_text = self.font.render(self.text, True, self.color)
         screen.blit(rendered_text, (self.rect.x + 5, self.rect.y + 5))
 
+class ImageSprite:              
+    """Sprite class that supports image update and displaying speech bubble"""
+    def __init__( self, x, y, img ):     
+        pygame.sprite.Sprite.__init__(self)      
+        self.image = img
+        self.rect  = self.image.get_rect()
+        self.rect.center = ( x, y )
+        self.textbox = None     
+        self.text_duration = 0   # Time left until speech bubble disappear (in miliseconds)
+        self.text_offset = 15   # Space between sprite and speech bubble
+
+    def talk( self, text, duration = 120, dir_right=True, bg_color = (160, 160, 160), txt_color = (0, 0, 0)):
+        """
+        Display a speech bubble near the sprite
+
+        text: The text to display
+        duration: How many frames to show the text 
+        dir_right: True indicates the speech bubble is displayed on the right hand side of the sprite, False indicates left hand side
+        txt_color: RGB color of the text
+        bg_color: RGB color of the text box background
+        """
+        test_font = pygame.font.Font(None, 28)
+        text_width, text_height = test_font.size(text)
+        text_width += 50
+        text_height += 30   # Padding of speech bubble
+        
+        if dir_right:
+            x_pos = self.rect.right + self.text_offset
+        else:
+            x_pos = self.rect.left - text_width - self.text_offset
+            
+        y_pos = self.rect.top + text_height//2
+        
+        self.textbox = TextBlock(
+            x=x_pos,
+            y=y_pos,
+            width=text_width,
+            height=text_height,
+            text=text,
+            bg_color=bg_color,
+            txt_color=txt_color
+        )
+        self.text_duration = duration
+
+    def update( self, screen, img=None ):   
+        if img != None:
+            self.image = img
+        screen.blit(self.image, self.rect)
+        if self.textbox and self.text_duration > 0:
+            self.textbox.blk_render(screen)
+            self.textbox.txt_render(screen, self.textbox.rect.centerx, self.textbox.rect.centery)
+            self.text_duration -= 1
+            if self.text_duration <= 0:
+                self.textbox = None
+
+class Spectator(pygame.sprite.Sprite):
+    sprite_images = None  # Will be initialized later
+
+    @classmethod
+    def load_images(cls):
+        """Load images when pygame is ready"""
+        if cls.sprite_images is None:
+            cls.sprite_images = [
+                pygame.image.load(os.path.join('images', filename)).convert_alpha()
+                for filename in ['man.png', 'woman.png']
+            ]
+    
+    def __init__(self):
+        super().__init__()
+        if Spectator.sprite_images is None:
+            Spectator.load_images()
+        # Load image or create colored surface
+        self.image = random.choice(Spectator.sprite_images)
+        self.image = smoothscale_by(self.image, 0.4)
+        self.rect = self.image.get_rect()
+        
+        # Movement areas
+        self.main_area = pygame.Rect(200, 200, 400, 200)
+        self.player_area = pygame.Rect(50, 150, 100, 400)  # Left side
+        self.opponent_area = pygame.Rect(650, 150, 100, 400)  # Right side
+        
+        # Initial position
+        self.reset_position()
+        
+        # Movement
+        self.speed_x = random.choice([-2, -1, 1, 2])
+        self.speed_y = random.choice([-2, -1, 1, 2])
+        self.target_area = None
+        self.moving_to_target = False
+        self.move_speed = 3
+    
+    def reset_position(self):
+        """Place spectator in random position in main area"""
+        self.rect.x = random.randint(self.main_area.left, self.main_area.right - self.rect.width)
+        self.rect.y = random.randint(self.main_area.top, self.main_area.bottom - self.rect.height)
+        self.current_area = self.main_area
+    
+    def move_to_side(self, side):
+        """Start moving to player or opponent side"""
+        self.target_area = self.player_area if side == "player" else self.opponent_area
+        self.moving_to_target = True
+    
+    def update(self):
+        if self.moving_to_target:
+            # Move toward target area
+            target_x = self.target_area.left if self.target_area == self.player_area else self.target_area.right
+            target_y = self.target_area.centery
+            
+            # Calculate direction
+            dx = target_x - self.rect.x
+            dy = target_y - self.rect.y
+            
+            # Normalize movement
+            distance = max(1, (dx**2 + dy**2)**0.5)  # Avoid division by zero
+            self.rect.x += self.move_speed * dx / distance
+            self.rect.y += self.move_speed * dy / distance
+            
+            # Check if reached target using collidepoint
+            if self.rect.collidepoint(self.target_area.center):
+                self.moving_to_target = False
+                self.current_area = self.target_area
+                # Start bouncing in new area
+                self.speed_x = random.choice([-2, -1, 1, 2])
+                self.speed_y = random.choice([-2, -1, 1, 2])
+        else:
+            # Normal bouncing movement
+            self.rect.x += self.speed_x
+            self.rect.y += self.speed_y
+            
+            # Bounce off walls of current area
+            if self.rect.left < self.current_area.left or self.rect.right > self.current_area.right:
+                self.speed_x *= -1
+            if self.rect.top < self.current_area.top or self.rect.bottom > self.current_area.bottom:
+                self.speed_y *= -1
+
+class Audience:
+    def __init__(self, num_spectators=10):
+        self.spectators = pygame.sprite.Group()
+        for _ in range(num_spectators):
+            self.spectators.add(Spectator())
+        
+        # Track which spectators have moved to sides
+        self.moved_to_player = 0
+        self.moved_to_opponent = 0
+    
+    def react_to_answer(self, side):
+        """Move some spectators to player or opponent side"""
+        num_to_move = random.randint(1, 3)  # Move 1-3 spectators
+        
+        for spectator in self.spectators:
+            if spectator.current_area == spectator.main_area:
+                if (side == "player" and self.moved_to_player < 5) or \
+                   (side == "opponent" and self.moved_to_opponent < 5):
+                    spectator.move_to_side(side)
+                    if side == "player":
+                        self.moved_to_player += 1
+                    else:
+                        self.moved_to_opponent += 1
+                    num_to_move -= 1
+                    if num_to_move <= 0:
+                        break
+    
+    def reset_positions(self):
+        """Reset all spectators to main area"""
+        for spectator in self.spectators:
+            spectator.reset_position()
+        self.moved_to_player = 0
+        self.moved_to_opponent = 0
+    
+    def update(self):
+        self.spectators.update()
+    
+    def draw(self, screen):
+        self.spectators.draw(screen)
+
 
 class QuestionGenerator:
     @staticmethod
@@ -133,6 +309,7 @@ class QuestionGenerator:
                         + ","
                         "each question has 10 answers with the first 6 answers being the most popular ones. "
                         "Restrict your question to at most 60 characters long. "
+                        "Restrict each answer to at most 2 words"
                         "Do not use any text formatting in your response, "
                         "In the answers, do not include any numbers or symbols. "
                         "Use 'Question 1: ','Question 2: ','Question 3: ' to indicate each question, "
@@ -166,11 +343,12 @@ class QuestionGenerator:
                 answer = ""
                 points = 0
                 text = line.split()
-                for word in text:
-                    if word.isalpha():
-                        answer += word  # note that there are no spaces between words
-                    elif word[0] == "(":
+                for i in range(1,len(text)):
+                    word = text[i]
+                    if(word[0]=='('):
                         points = int(word[1:-1])
+                    else:
+                        answer += word  # note that there are no spaces between words
                 answer = answer.lower()  # convert to lowercase
                 
                 if not "answer" in temp:
@@ -194,8 +372,9 @@ class QuestionGenerator:
         return (ret, ret2)
 
 class Bot:
-    def __init__(self, oppo_answers):
+    def __init__(self, oppo_answers, oppo_sprite):
         self.oppo_answers = oppo_answers
+        self.oppo_sprite = oppo_sprite
         self.current_question = -1
         self.answer_timer = 0
         self.answer_delay = 0
@@ -258,13 +437,20 @@ class GameUI:
         self.screen = pygame.display.set_mode((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
         pygame.display.set_caption("Guess Their Answer!")
         
+        Spectator.load_images() # Load images for spectators
+
         # UI Elements
         self.input_block = TextInputBlock(50, 50, 700, 50, font_size=48)
         self.PvE_button = Button((self.SCREEN_WIDTH - 250) // 2, self.SCREEN_HEIGHT - 80, 250, 50)
         self.PvE_sign = TextBlock((self.SCREEN_WIDTH - 250) // 2, self.SCREEN_HEIGHT - 80, 250, 50, "PvE mode")
         self.to_menu_button = Button((self.SCREEN_WIDTH - 250) // 4, 500, 250, 50)
         self.to_menu_sign = TextBlock((self.SCREEN_WIDTH - 250) // 2, 500, 250, 50, "Return to Menu")
-        
+
+        player_image   = pygame.image.load( 'testsprite.png' ).convert_alpha()
+        self.player_sprite = ImageSprite(100, 400, player_image)
+        oppo_image   = pygame.image.load( 'testsprite.png' ).convert_alpha()
+        self.oppo_sprite = ImageSprite(700, 400, oppo_image)
+
         # Game state
         self.reset_game()
 
@@ -296,7 +482,8 @@ class GameUI:
         self.show_scoreboard = False
         self.question_start_time = 0
         self.user_input = ""
-        self.bot = Bot(self.oppo_answers)
+        self.bot = Bot(self.oppo_answers, self.oppo_sprite)
+        self.audience = Audience()
 
 
     def run(self):
@@ -325,6 +512,7 @@ class GameUI:
                     self.user_input = result
                     self.check_answer(result)
                     self.feedback_timer = 60
+                    self.player_sprite.talk(result, bg_color=(255, 125, 125), txt_color=(250, 10, 10)) # pink, red
             
             # Handle button clicks
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -358,10 +546,13 @@ class GameUI:
         current_time = pygame.time.get_ticks()
         bot_answer = self.bot.update(current_time)
         if bot_answer:
+            self.bot.oppo_sprite.talk(self.oppo_answers[self.current_question][bot_answer], bg_color=(50, 160, 250), txt_color=(10, 10, 250), dir_right=False) # cyan, blue
             if bot_answer < 6 and self.answer_used[bot_answer] != 1:
                 points = self.questions[self.current_question]["points"][bot_answer]
                 self.oppo_score += points
                 self.answer_used[bot_answer] = 1
+                self.audience.react_to_answer("opponent")  # Add this line
+
         return bot_answer
                 
             
@@ -376,6 +567,7 @@ class GameUI:
             self.render_scoreboard()
         else:
             self.render_game()
+        self.render_sprites()
 
     def render_menu(self):
         """Render the main menu"""
@@ -386,6 +578,8 @@ class GameUI:
 
     def render_game(self):
         """Render the game screen"""
+        self.audience.update() #Draw audience
+        self.audience.draw(self.screen)
         self.input_block.render(self.screen, (0, 0, 0), 2)
         self.draw_scores()
         self.draw_question()
@@ -424,6 +618,10 @@ class GameUI:
         self.to_menu_sign.blk_render(self.screen)
         self.to_menu_sign.txt_render(self.screen, (self.SCREEN_WIDTH - 250) // 2 + 10, self.SCREEN_HEIGHT - 80 + 10)
 
+    def render_sprites(self):
+        self.player_sprite.update(self.screen)
+        self.bot.oppo_sprite.update(self.screen)
+
     # Game logic methods (kept similar to original but adapted for OOP)
     def draw_answer_hints(self):
         remaining = len(self.questions[self.current_question]["answer"]) - sum(self.answer_used)
@@ -452,6 +650,7 @@ class GameUI:
                 self.player_score += points
                 self.answer_used[index] = 1
                 self.feedback_text = f"Correct! +{points} points"
+                self.audience.react_to_answer("player")  # Add this line
                 return True
             else:
                 self.feedback_text = "Repeated answer!"
@@ -550,6 +749,8 @@ class GameUI:
         self.answer_used = [0] * 6
         self.current_question += 1
         self.input_block.text = ""
+        self.player_sprite.text_duration = 0
+        self.bot.oppo_sprite.text_duration = 0
         self.bot.start_question(self.current_question)
         if self.current_question >= 3:
             self.show_scoreboard = True
