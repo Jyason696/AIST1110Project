@@ -1,6 +1,12 @@
 # AIST1110Project
 This is the project done by group 6
 
+# Before running the game
+Delete the dummy .env file and replace it with a .env file, where file inside should be
+'''
+AZURE_API_KEY='replace this with your key'
+'''
+
 # Game flow
 1. Run the source code
 2. A gui will appear
