@@ -88,7 +88,7 @@ class TextInputBlock(Block):
         rendered_text = self.font.render(self.text, True, self.color)
         screen.blit(rendered_text, (self.rect.x + 5, self.rect.y + 5))
 
-class ImageSprite( pygame.sprite.Sprite ):              
+class ImageSprite:              
     """Sprite class that supports image update and displaying speech bubble"""
     def __init__( self, x, y, img ):     
         pygame.sprite.Sprite.__init__(self)      
