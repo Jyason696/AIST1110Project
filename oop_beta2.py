@@ -5,6 +5,7 @@ import sys
 import os
 from dotenv import load_dotenv
 from openai import AzureOpenAI
+from pygame.transform import smoothscale_by
 
 class Block:
     def __init__(self, x, y, width, height, bg_color):
@@ -67,7 +68,7 @@ class TextInputBlock(Block):
             # Toggle active state if clicked inside the input box
             self.active = self.rect.collidepoint(event.pos)
         
-        if self.active and event.type == pygame.KEYDOWN:
+        if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_RETURN:
                 self.output_text = self.text
                 self.text = ""
@@ -142,6 +143,127 @@ class ImageSprite:
             self.text_duration -= 1
             if self.text_duration <= 0:
                 self.textbox = None
+
+class Spectator(pygame.sprite.Sprite):
+    sprite_images = None  # Will be initialized later
+
+    @classmethod
+    def load_images(cls):
+        """Load images when pygame is ready"""
+        if cls.sprite_images is None:
+            cls.sprite_images = [
+                pygame.image.load(os.path.join('images', filename)).convert_alpha()
+                for filename in ['miku_idle.png', 'luka_idle.png']
+            ]
+    
+    def __init__(self):
+        super().__init__()
+        if Spectator.sprite_images is None:
+            Spectator.load_images()
+        # Load image or create colored surface
+        self.image = random.choice(Spectator.sprite_images)
+        self.image = smoothscale_by(self.image, 0.4)
+        self.rect = self.image.get_rect()
+        
+        # Movement areas
+        self.main_area = pygame.Rect(200, 200, 400, 200)
+        self.player_area = pygame.Rect(50, 150, 100, 400)  # Left side
+        self.opponent_area = pygame.Rect(650, 150, 100, 400)  # Right side
+        
+        # Initial position
+        self.reset_position()
+        
+        # Movement
+        self.speed_x = random.choice([-2, -1, 1, 2])
+        self.speed_y = random.choice([-2, -1, 1, 2])
+        self.target_area = None
+        self.moving_to_target = False
+        self.move_speed = 3
+    
+    def reset_position(self):
+        """Place spectator in random position in main area"""
+        self.rect.x = random.randint(self.main_area.left, self.main_area.right - self.rect.width)
+        self.rect.y = random.randint(self.main_area.top, self.main_area.bottom - self.rect.height)
+        self.current_area = self.main_area
+    
+    def move_to_side(self, side):
+        """Start moving to player or opponent side"""
+        self.target_area = self.player_area if side == "player" else self.opponent_area
+        self.moving_to_target = True
+    
+    def update(self):
+        if self.moving_to_target:
+            # Move toward target area
+            target_x = self.target_area.left if self.target_area == self.player_area else self.target_area.right
+            target_y = self.target_area.centery
+            
+            # Calculate direction
+            dx = target_x - self.rect.x
+            dy = target_y - self.rect.y
+            
+            # Normalize movement
+            distance = max(1, (dx**2 + dy**2)**0.5)  # Avoid division by zero
+            self.rect.x += self.move_speed * dx / distance
+            self.rect.y += self.move_speed * dy / distance
+            
+            # Check if reached target using collidepoint
+            if self.rect.collidepoint(self.target_area.center):
+                self.moving_to_target = False
+                self.current_area = self.target_area
+                # Start bouncing in new area
+                self.speed_x = random.choice([-2, -1, 1, 2])
+                self.speed_y = random.choice([-2, -1, 1, 2])
+        else:
+            # Normal bouncing movement
+            self.rect.x += self.speed_x
+            self.rect.y += self.speed_y
+            
+            # Bounce off walls of current area
+            if self.rect.left < self.current_area.left or self.rect.right > self.current_area.right:
+                self.speed_x *= -1
+            if self.rect.top < self.current_area.top or self.rect.bottom > self.current_area.bottom:
+                self.speed_y *= -1
+
+class Audience:
+    def __init__(self, num_spectators=10):
+        self.spectators = pygame.sprite.Group()
+        for _ in range(num_spectators):
+            self.spectators.add(Spectator())
+        
+        # Track which spectators have moved to sides
+        self.moved_to_player = 0
+        self.moved_to_opponent = 0
+    
+    def react_to_answer(self, side):
+        """Move some spectators to player or opponent side"""
+        num_to_move = random.randint(1, 3)  # Move 1-3 spectators
+        
+        for spectator in self.spectators:
+            if spectator.current_area == spectator.main_area:
+                if (side == "player" and self.moved_to_player < 5) or \
+                   (side == "opponent" and self.moved_to_opponent < 5):
+                    spectator.move_to_side(side)
+                    if side == "player":
+                        self.moved_to_player += 1
+                    else:
+                        self.moved_to_opponent += 1
+                    num_to_move -= 1
+                    if num_to_move <= 0:
+                        break
+    
+    def reset_positions(self):
+        """Reset all spectators to main area"""
+        for spectator in self.spectators:
+            spectator.reset_position()
+        self.moved_to_player = 0
+        self.moved_to_opponent = 0
+    
+    def update(self):
+        self.spectators.update()
+    
+    def draw(self, screen):
+        self.spectators.draw(screen)
+
 
 class QuestionGenerator:
     @staticmethod
@@ -291,12 +413,16 @@ class Bot:
     
     def draw_output(self, screen, output):
         if self.timer > 0 or output is not None:
-            self.timer = 60
             if output is not None:
                 self.last_output = self.oppo_answers[self.current_question][output]
+            temp_str = f"Opponent: {self.last_output}"
+            test_font = pygame.font.Font(None, 28)
+            text_width, text_height = test_font.size(temp_str)
+            text_width += 10
+            text_height += 10   # Padding 
             answer_block = TextBlock(
-                800 - 180, 450, 100, 30,
-                f"Opponent: {self.last_output}",
+                800 - text_width - 50, 450, text_width, text_height,
+                temp_str,
                 bg_color=(240, 240, 240),
                 font_size=25,
                 txt_color=(0, 0, 0)
@@ -315,6 +441,8 @@ class GameUI:
         self.screen = pygame.display.set_mode((self.SCREEN_WIDTH, self.SCREEN_HEIGHT))
         pygame.display.set_caption("Guess Their Answer!")
         
+        Spectator.load_images() # Load images for spectators
+
         # UI Elements
         self.input_block = TextInputBlock(50, 50, 700, 50, font_size=48)
         self.PvE_button = Button((self.SCREEN_WIDTH - 250) // 2, self.SCREEN_HEIGHT - 80, 250, 50)
@@ -322,10 +450,12 @@ class GameUI:
         self.to_menu_button = Button((self.SCREEN_WIDTH - 250) // 4, 500, 250, 50)
         self.to_menu_sign = TextBlock((self.SCREEN_WIDTH - 250) // 2, 500, 250, 50, "Return to Menu")
 
-        player_image   = pygame.image.load( 'testsprite.png' ).convert_alpha()
+        player_image = pygame.image.load(os.path.join('images', 'miku_idle.png')).convert_alpha()
         self.player_sprite = ImageSprite(100, 400, player_image)
-        oppo_image   = pygame.image.load( 'testsprite.png' ).convert_alpha()
+        oppo_image = pygame.image.load(os.path.join('images', 'luka_idle.png')).convert_alpha()
         self.oppo_sprite = ImageSprite(700, 400, oppo_image)
+        self.bg_image = pygame.image.load(os.path.join('images', 'background.png')).convert_alpha()
+
 
         # Game state
         self.reset_game()
@@ -359,6 +489,7 @@ class GameUI:
         self.question_start_time = 0
         self.user_input = ""
         self.bot = Bot(self.oppo_answers, self.oppo_sprite)
+        self.audience = Audience()
 
 
     def run(self):
@@ -421,11 +552,14 @@ class GameUI:
         current_time = pygame.time.get_ticks()
         bot_answer = self.bot.update(current_time)
         if bot_answer:
+            self.bot.timer = 60
             self.bot.oppo_sprite.talk(self.oppo_answers[self.current_question][bot_answer], bg_color=(50, 160, 250), txt_color=(10, 10, 250), dir_right=False) # cyan, blue
             if bot_answer < 6 and self.answer_used[bot_answer] != 1:
                 points = self.questions[self.current_question]["points"][bot_answer]
                 self.oppo_score += points
                 self.answer_used[bot_answer] = 1
+                self.audience.react_to_answer("opponent")  # Add this line
+
         return bot_answer
                 
             
@@ -433,6 +567,7 @@ class GameUI:
     def render(self):
         """Render the current game state"""
         self.screen.fill((255, 255, 255))
+        self.screen.blit(self.bg_image, (0, 0))
         
         if self.show_menu:
             self.render_menu()
@@ -448,9 +583,18 @@ class GameUI:
         self.PvE_sign.update_color(self.PvE_button.check_hover(pygame.mouse.get_pos()))
         self.PvE_sign.blk_render(self.screen)
         self.PvE_sign.txt_render(self.screen, (self.SCREEN_WIDTH - 250) // 2 + 10, self.SCREEN_HEIGHT - 80 + 10)
+        player_image   = pygame.image.load(os.path.join('images', 'miku_idle.png')).convert_alpha()
+        oppo_image   = pygame.image.load(os.path.join('images', 'luka_idle.png')).convert_alpha()
+        self.player_sprite.update(self.screen, player_image)
+        self.bot.oppo_sprite.update(self.screen, oppo_image)
+        name_sign = TextBlock((self.SCREEN_WIDTH-400) // 2, (self.SCREEN_HEIGHT-200) // 2, 400, 200, "Guess Their Answer!", bg_color=(18, 138, 94), font_size=50, txt_color=(255,255,255))
+        name_sign.blk_render(self.screen)
+        name_sign.txt_render(self.screen, (self.SCREEN_WIDTH-400) // 2, (self.SCREEN_HEIGHT-200) // 2)
 
     def render_game(self):
         """Render the game screen"""
+        self.audience.update() #Draw audience
+        self.audience.draw(self.screen)
         self.input_block.render(self.screen, (0, 0, 0), 2)
         self.draw_scores()
         self.draw_question()
@@ -484,6 +628,18 @@ class GameUI:
                 draw_text(str_list[i], x_mid, y_list[i])
                 draw_text(str(self.oppo_hist[i]), x_right, y_list[i])
         
+        if sum(self.player_hist) > sum(self.oppo_hist):     # Win
+            player_image   = pygame.image.load(os.path.join('images', 'miku_laugh.png')).convert_alpha()
+            oppo_image   = pygame.image.load(os.path.join('images', 'luka_angry.png')).convert_alpha()
+        elif sum(self.player_hist) < sum(self.oppo_hist):   # Lose
+            player_image   = pygame.image.load(os.path.join('images', 'miku_angry.png')).convert_alpha()
+            oppo_image   = pygame.image.load(os.path.join('images', 'luka_laugh.png')).convert_alpha()
+        else:                                               # Draw
+            player_image   = pygame.image.load(os.path.join('images', 'miku_idle.png')).convert_alpha()
+            oppo_image   = pygame.image.load(os.path.join('images', 'luka_idle.png')).convert_alpha()
+        self.player_sprite.update(self.screen, player_image)
+        self.bot.oppo_sprite.update(self.screen, oppo_image)
+
         self.to_menu_button.activated = True
         self.to_menu_sign.update_color(self.to_menu_button.check_hover(pygame.mouse.get_pos()))
         self.to_menu_sign.blk_render(self.screen)
@@ -521,6 +677,7 @@ class GameUI:
                 self.player_score += points
                 self.answer_used[index] = 1
                 self.feedback_text = f"Correct! +{points} points"
+                self.audience.react_to_answer("player")  # Add this line
                 return True
             else:
                 self.feedback_text = "Repeated answer!"
@@ -565,9 +722,14 @@ class GameUI:
 
     def draw_output(self):
         if self.feedback_timer > 0:
+            temp_str = f"Your answer: {self.user_input}"
+            test_font = pygame.font.Font(None, 28)
+            text_width, text_height = test_font.size(temp_str)
+            text_width += 50
+            text_height += 10   # Padding 
             answer_block = TextBlock(
-                80, 450, 100, 30,
-                f"Your answer: {self.user_input}",
+                30, 450, text_width, text_height,
+                temp_str,
                 bg_color=(240, 240, 240),
                 font_size=32,
                 txt_color=(0, 0, 0)
