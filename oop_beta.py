@@ -91,19 +91,36 @@ class TextInputBlock(Block):
 
 class QuestionGenerator:
     @staticmethod
-    def get_questions(theme: str = None) -> tuple[list[dict], list[list[str]]]:
-        """Generate questions and answers based on a specified theme"""
+    def get_questions(theme: str = None) -> tuple[list[dict], list[list[str]] ]:
+        """
+        Generate questions and answers based on a specified theme
+
+        Args:
+            theme (str, optional): Theme for the questions. Defaults to None.
+
+        Returns tuple of two elements:
+
+            list[dict]: A list of 3 question dictionaries, each containing:
+                - question (str): The question
+                - answer (list[str]): List of the 6 answers in lowercase
+                - points (list[int]): Corresponding points for each answer
+
+            list[list[str]]: 3 lists of strings, they are the list of guesses used by the AI opponent
+        """
         load_dotenv()
         AZURE_API_KEY = os.getenv("AZURE_API_KEY")
 
+        # Initialize the client
         client = AzureOpenAI(
             azure_endpoint="https://cuhk-apip.azure-api.net",
             api_version="2024-06-01",
             api_key=AZURE_API_KEY,
         )
 
-        theme_prompt = f"related to the theme {theme}" if theme else ""
-        
+        theme_prompt = ""
+        if theme != None:
+            theme_prompt = "related to the theme " + theme
+
         response = client.chat.completions.create(
             model="gpt-4o",
             messages=[
@@ -111,7 +128,9 @@ class QuestionGenerator:
                 {
                     "role": "user",
                     "content": (
-                        f"Create 3 questions for playing the 'Guess Their Answer' game {theme_prompt},"
+                        "Create 3 questions for playing the 'Guess Their Answer' game "
+                        + theme_prompt
+                        + ","
                         "each question has 10 answers with the first 6 answers being the most popular ones. "
                         "Restrict your question to at most 60 characters long. "
                         "Do not use any text formatting in your response, "
@@ -125,32 +144,40 @@ class QuestionGenerator:
             ],
             temperature=0.9,
         )
-        
-        return QuestionGenerator._parse_response(response.choices[0].message.content)
-
-    @staticmethod
-    def _parse_response(res: str) -> tuple[list[dict], list[list[str]]]:
-        """Parse the API response into questions and opponent answers"""
+        res = response.choices[0].message.content
         res = res.split("\n")
-        ret = []
-        ret2 = []
-        temp = {}
-        oppo_list = []
-        
+
+        ret = list()
+        ret2 = list()
+        temp = dict()  # Store current question
+        oppo_list = list()  # Store all answers of current question
         for line in res:
-            if "Question" in line:
-                if oppo_list:
+            if line.find("Question") != -1:
+                if len(oppo_list)>0:
                     ret2.append(oppo_list)
-                oppo_list = []
-                temp = {"question": line[12:], "answer": [], "points": []}
+                oppo_list = list()
+                temp = dict()  # start a new question
+                text = line[12:]
+                temp["question"] = text
             else:
                 line = line.strip()
-                if not line:
+                if len(line) < 1:  # empty line
                     continue
-                    
-                answer, points = QuestionGenerator._parse_answer_line(line)
+                answer = ""
+                points = 0
+                text = line.split()
+                for word in text:
+                    if word.isalpha():
+                        answer += word  # note that there are no spaces between words
+                    elif word[0] == "(":
+                        points = int(word[1:-1])
+                answer = answer.lower()  # convert to lowercase
                 
-                if len(temp["answer"]) == 6:
+                if not "answer" in temp:
+                    temp["answer"] = list()
+                    temp["points"] = list()
+
+                if len(temp["answer"]) == 6: # handle oppo_list, keep original case and spaces
                     oppo_list.append(line[line.find(" ")+1:])
                 else:
                     oppo_list.append(line[line.find(" ")+1:line.rfind(" ")])
@@ -164,20 +191,62 @@ class QuestionGenerator:
                     temp["points"].append(points)
 
         ret2.append(oppo_list)
-        return ret, ret2
+        return (ret, ret2)
 
-    @staticmethod
-    def _parse_answer_line(line: str) -> tuple[str, int]:
-        """Parse a single answer line from the API response"""
-        answer = ""
-        points = 0
-        for word in line.split():
-            if word.isalpha():
-                answer += word
-            elif word.startswith("("):
-                points = int(word[1:-1])
-        return answer.lower(), points
-
+class Bot:
+    def __init__(self, oppo_answers):
+        self.oppo_answers = oppo_answers
+        self.current_question = -1
+        self.answer_timer = 0
+        self.answer_delay = 0
+        self.answers_used = []
+        self.timer = 0
+    
+    def start_question(self, question_index):
+        """Reset bot state for new question"""
+        self.current_question = question_index
+        self.answers_used = []
+        self.answer_timer = 0
+        self.answer_delay = random.randint(8, 15) * 1000  # Convert to milliseconds
+        self.last_answer_time = pygame.time.get_ticks()
+    
+    def update(self, current_time):
+        """Check if bot should answer now and return answer if ready"""
+        if self.current_question == -1 or len(self.answers_used) >= len(self.oppo_answers[self.current_question]):
+            return None
+        
+        # Check if delay time has passed
+        if current_time - self.last_answer_time > self.answer_delay:
+            # Get random unused answer
+            available_answers = [
+                i for i in range(len(self.oppo_answers[self.current_question])) 
+                if i not in self.answers_used
+            ]
+            
+            if available_answers:
+                chosen_index = random.choice(available_answers)
+                self.answers_used.append(chosen_index) # Mark answer as used
+                self.last_answer_time = current_time # Reset last answer time
+                self.answer_delay = random.randint(8, 15) * 1000 # Reset delay
+                return chosen_index
+        
+        return None
+    
+    def draw_output(self, screen, output):
+        if self.timer > 0 or output is not None:
+            self.timer = 60
+            if output is not None:
+                self.last_output = self.oppo_answers[self.current_question][output]
+            answer_block = TextBlock(
+                800 - 180, 450, 100, 30,
+                f"Opponent: {self.last_output}",
+                bg_color=(240, 240, 240),
+                font_size=25,
+                txt_color=(0, 0, 0)
+            )
+            answer_block.blk_render(screen)
+            answer_block.txt_render(screen, 80, 450)
+        self.timer -= 1
 
 class GameUI:
     def __init__(self):
@@ -190,7 +259,6 @@ class GameUI:
         pygame.display.set_caption("Guess Their Answer!")
         
         # UI Elements
-        
         self.input_block = TextInputBlock(50, 50, 700, 50, font_size=48)
         self.PvE_button = Button((self.SCREEN_WIDTH - 250) // 2, self.SCREEN_HEIGHT - 80, 250, 50)
         self.PvE_sign = TextBlock((self.SCREEN_WIDTH - 250) // 2, self.SCREEN_HEIGHT - 80, 250, 50, "PvE mode")
@@ -199,6 +267,7 @@ class GameUI:
         
         # Game state
         self.reset_game()
+
 
     def reset_game(self):
         """Reset all game state variables"""
@@ -213,6 +282,8 @@ class GameUI:
         pygame.display.flip()
         
         self.questions, self.oppo_answers = QuestionGenerator.get_questions()
+        print(self.questions)
+        print(self.oppo_answers)
         self.current_question = -1
         self.player_score = 0
         self.oppo_score = 0
@@ -225,6 +296,8 @@ class GameUI:
         self.show_scoreboard = False
         self.question_start_time = 0
         self.user_input = ""
+        self.bot = Bot(self.oppo_answers)
+
 
     def run(self):
         """Main game loop"""
@@ -280,6 +353,18 @@ class GameUI:
         """Update game state"""
         if not self.show_menu and not self.show_scoreboard:
             self.check_timer()
+            
+    def check_bot_answer(self):        # Let bot answer
+        current_time = pygame.time.get_ticks()
+        bot_answer = self.bot.update(current_time)
+        if bot_answer:
+            if bot_answer < 6 and self.answer_used[bot_answer] != 1:
+                points = self.questions[self.current_question]["points"][bot_answer]
+                self.oppo_score += points
+                self.answer_used[bot_answer] = 1
+        return bot_answer
+                
+            
 
     def render(self):
         """Render the current game state"""
@@ -305,6 +390,7 @@ class GameUI:
         self.draw_scores()
         self.draw_question()
         self.draw_timer()
+        Bot.draw_output(self.bot, self.screen, self.check_bot_answer())
         self.draw_answers()
         self.draw_output()
         self.draw_answer_hints()
@@ -464,7 +550,7 @@ class GameUI:
         self.answer_used = [0] * 6
         self.current_question += 1
         self.input_block.text = ""
-        
+        self.bot.start_question(self.current_question)
         if self.current_question >= 3:
             self.show_scoreboard = True
 
