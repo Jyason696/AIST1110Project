@@ -13,6 +13,7 @@ This is the project done by group 6
 9. User can choose to return to the menu by clicking the button appear
 10. To exit the game, press the x button on the up right button
 
-#Resources used
-Sprite images: https://prsk-chibi-viewer.vercel.app/
-Background image: https://devforum.roblox.com/t/showing-my-newest-showcase-empty-sekai/1987459
+# Resources used
+Sprite images: [https://prsk-chibi-viewer.vercel.app/]
+
+Background image: [https://devforum.roblox.com/t/showing-my-newest-showcase-empty-sekai/1987459]
