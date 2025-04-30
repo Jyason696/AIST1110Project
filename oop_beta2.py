@@ -22,7 +22,7 @@ class Block:
         pygame.draw.rect(screen, self.curr_color, self.rect)
 
 
-class TextBlock(Block):  # Ensure TextBlock inherits from Block
+class Text_Block(Block):  # Ensure Text_Block inherits from Block
     def __init__(self, x, y, width, height, text, bg_color=(160, 160, 160), fontname=None, font_size=36, txt_color=(0, 0, 0)):
         super().__init__(x, y, width, height, bg_color)  # Pass required arguments to Block's __init__
         self.font = pygame.font.Font(fontname, font_size)
@@ -53,7 +53,7 @@ class Button(Block):
         return self.activated
 
 
-class TextInputBlock(Block):
+class Text_Input_Block(Block):
     def __init__(self, x, y, width, height, font_size=30, color=(0, 0, 0), bg_color=(200, 200, 200)):
         super().__init__(x, y, width, height, bg_color)
         self.font_size = font_size
@@ -89,7 +89,7 @@ class TextInputBlock(Block):
         rendered_text = self.font.render(self.text, True, self.color)
         screen.blit(rendered_text, (self.rect.x + 5, self.rect.y + 5))
 
-class ImageSprite:              
+class Image_Sprite:              
     """Sprite class that supports image update and displaying speech bubble"""
     def __init__( self, x, y, img ):     
         pygame.sprite.Sprite.__init__(self)      
@@ -122,7 +122,7 @@ class ImageSprite:
             
         y_pos = self.rect.top + text_height//2
         
-        self.textbox = TextBlock(
+        self.textbox = Text_Block(
             x=x_pos,
             y=y_pos,
             width=text_width,
@@ -265,7 +265,7 @@ class Audience:
         self.spectators.draw(screen)
 
 
-class QuestionGenerator:
+class Question_Generator:
     @staticmethod
     def get_questions(theme: str = None) -> tuple[list[dict], list[list[str]] ]:
         """
@@ -420,7 +420,7 @@ class Bot:
             text_width, text_height = test_font.size(temp_str)
             text_width += 10
             text_height += 10   # Padding 
-            answer_block = TextBlock(
+            answer_block = Text_Block(
                 800 - text_width - 50, 450, text_width, text_height,
                 temp_str,
                 bg_color=(240, 240, 240),
@@ -431,7 +431,7 @@ class Bot:
             answer_block.txt_render(screen, 80, 450)
         self.timer -= 1
 
-class GameUI:
+class Game_UI:
     def __init__(self):
         pygame.init()
         self.clock = pygame.time.Clock()
@@ -444,16 +444,16 @@ class GameUI:
         Spectator.load_images() # Load images for spectators
 
         # UI Elements
-        self.input_block = TextInputBlock(50, 50, 700, 50, font_size=48)
+        self.input_block = Text_Input_Block(50, 50, 700, 50, font_size=48)
         self.PvE_button = Button((self.SCREEN_WIDTH - 250) // 2, self.SCREEN_HEIGHT - 80, 250, 50)
-        self.PvE_sign = TextBlock((self.SCREEN_WIDTH - 250) // 2, self.SCREEN_HEIGHT - 80, 250, 50, "PvE mode")
+        self.PvE_sign = Text_Block((self.SCREEN_WIDTH - 250) // 2, self.SCREEN_HEIGHT - 80, 250, 50, "PvE mode")
         self.to_menu_button = Button((self.SCREEN_WIDTH - 250) // 4, 500, 250, 50)
-        self.to_menu_sign = TextBlock((self.SCREEN_WIDTH - 250) // 2, 500, 250, 50, "Return to Menu")
+        self.to_menu_sign = Text_Block((self.SCREEN_WIDTH - 250) // 2, 500, 250, 50, "Return to Menu")
 
         player_image = pygame.image.load(os.path.join('images', 'miku_idle.png')).convert_alpha()
-        self.player_sprite = ImageSprite(100, 400, player_image)
+        self.player_sprite = Image_Sprite(100, 400, player_image)
         oppo_image = pygame.image.load(os.path.join('images', 'luka_idle.png')).convert_alpha()
-        self.oppo_sprite = ImageSprite(700, 400, oppo_image)
+        self.oppo_sprite = Image_Sprite(700, 400, oppo_image)
         self.bg_image = pygame.image.load(os.path.join('images', 'background.png')).convert_alpha()
 
 
@@ -464,7 +464,7 @@ class GameUI:
     def reset_game(self):
         """Reset all game state variables"""
         self.screen.fill((0, 0, 0))
-        loading_text = TextBlock(
+        loading_text = Text_Block(
             (self.SCREEN_WIDTH-250)//2, (self.SCREEN_HEIGHT-50)//2, 
             250, 50, 
             "Game Loading... Please wait", 
@@ -473,7 +473,7 @@ class GameUI:
         loading_text.txt_render(self.screen, (self.SCREEN_WIDTH-250)//2, (self.SCREEN_HEIGHT-50)//2)
         pygame.display.flip()
         
-        self.questions, self.oppo_answers = QuestionGenerator.get_questions()
+        self.questions, self.oppo_answers = Question_Generator.get_questions()
         print(self.questions)
         print(self.oppo_answers)
         self.current_question = -1
@@ -587,7 +587,7 @@ class GameUI:
         oppo_image   = pygame.image.load(os.path.join('images', 'luka_idle.png')).convert_alpha()
         self.player_sprite.update(self.screen, player_image)
         self.bot.oppo_sprite.update(self.screen, oppo_image)
-        name_sign = TextBlock((self.SCREEN_WIDTH-400) // 2, (self.SCREEN_HEIGHT-200) // 2, 400, 200, "Guess Their Answer!", bg_color=(18, 138, 94), font_size=50, txt_color=(255,255,255))
+        name_sign = Text_Block((self.SCREEN_WIDTH-400) // 2, (self.SCREEN_HEIGHT-200) // 2, 400, 200, "Guess Their Answer!", bg_color=(18, 138, 94), font_size=50, txt_color=(255,255,255))
         name_sign.blk_render(self.screen)
         name_sign.txt_render(self.screen, (self.SCREEN_WIDTH-400) // 2, (self.SCREEN_HEIGHT-200) // 2)
 
@@ -608,8 +608,8 @@ class GameUI:
 
     def render_scoreboard(self):
         """Render the scoreboard screen"""
-        def draw_text(text: str, x, y):
-            temp = TextBlock(x, y, 250, 50, text)
+        def draw_text(text: str, x, y, color=(0,0,0)):
+            temp = Text_Block(x, y, 250, 50, text, txt_color=color)
             temp.txt_render(self.screen, x, y)
 
         str_list = ["Question 1", "Question 2", "Question 3", "Total"]
@@ -619,14 +619,25 @@ class GameUI:
         x_right = (self.SCREEN_WIDTH-250) // 4 * 3
         
         for i in range(4):
-            if i == 3:  # Show total score
-                draw_text(str(sum(self.player_hist)), x_left, y_list[i])
-                draw_text(str_list[i], x_mid, y_list[i])
-                draw_text(str(sum(self.oppo_hist)), x_right, y_list[i])
+
+            if i == 3:  # Show total score 
+                l_num = sum(self.player_hist)
+                r_num = sum(self.oppo_hist)
             else:
-                draw_text(str(self.player_hist[i]), x_left, y_list[i])
-                draw_text(str_list[i], x_mid, y_list[i])
-                draw_text(str(self.oppo_hist[i]), x_right, y_list[i])
+                l_num = self.player_hist[i]
+                r_num = self.oppo_hist[i]
+            
+            l_color = r_color = (0,0,0)
+            if l_num > r_num:     # Win
+                l_color = (10, 110, 10) # Green
+            elif l_num < r_num:   # Lose
+                r_color = (10, 110, 10)
+            
+            l_str = str(l_num)
+            r_str = str(r_num)
+            draw_text(l_str, x_left, y_list[i],color=l_color)
+            draw_text(str_list[i], x_mid, y_list[i])
+            draw_text(r_str, x_right, y_list[i],color=r_color)
         
         if sum(self.player_hist) > sum(self.oppo_hist):     # Win
             player_image   = pygame.image.load(os.path.join('images', 'miku_laugh.png')).convert_alpha()
@@ -653,7 +664,7 @@ class GameUI:
     def draw_answer_hints(self):
         remaining = len(self.questions[self.current_question]["answer"]) - sum(self.answer_used)
         hint_text = f"Answers remaining: {remaining}"
-        hint_block = TextBlock(275, 142, 250, 30, hint_text, bg_color=(240, 240, 240), font_size=24)
+        hint_block = Text_Block(275, 142, 250, 30, hint_text, bg_color=(240, 240, 240), font_size=24)
         hint_block.blk_render(self.screen)
         hint_block.txt_render(self.screen, 275, 142)
 
@@ -693,7 +704,7 @@ class GameUI:
             self.questions[self.current_question]["points"]
         )):
             if self.answer_used[i] == 1:
-                answer_block = TextBlock(
+                answer_block = Text_Block(
                     100, answer_y, 600, 40,
                     f"{self.oppo_answers[self.current_question][i]} ({points} pts)",
                     bg_color=(200, 255, 200),
@@ -705,7 +716,7 @@ class GameUI:
 
     def draw_feedback(self):
         if self.feedback_timer > 0:
-            feedback_block = TextBlock(
+            feedback_block = Text_Block(
                 self.SCREEN_WIDTH // 2 - 150, 20, 300, 40,
                 self.feedback_text,
                 bg_color=(240, 240, 240),
@@ -727,7 +738,7 @@ class GameUI:
             text_width, text_height = test_font.size(temp_str)
             text_width += 50
             text_height += 10   # Padding 
-            answer_block = TextBlock(
+            answer_block = Text_Block(
                 30, 450, text_width, text_height,
                 temp_str,
                 bg_color=(240, 240, 240),
@@ -754,20 +765,20 @@ class GameUI:
         player_bar.blk_render(self.screen)
         opponent_bar.blk_render(self.screen)
         
-        player_sign = TextBlock(80, self.SCREEN_HEIGHT - 80, 250, 50, player_text)
-        oppo_sign = TextBlock(self.SCREEN_WIDTH - 330, self.SCREEN_HEIGHT - 80, 250, 50, oppo_text)
+        player_sign = Text_Block(80, self.SCREEN_HEIGHT - 80, 250, 50, player_text)
+        oppo_sign = Text_Block(self.SCREEN_WIDTH - 330, self.SCREEN_HEIGHT - 80, 250, 50, oppo_text)
         player_sign.txt_render(self.screen, 80 + 10, self.SCREEN_HEIGHT - 80 + 10)
         oppo_sign.txt_render(self.screen, self.SCREEN_WIDTH - 330 + 10, self.SCREEN_HEIGHT - 80 + 10)
 
     def draw_question(self):
         q_text = self.questions[self.current_question]["question"]
-        question_sign = TextBlock((self.SCREEN_WIDTH-250)//2, 100, 250, 50, q_text)
+        question_sign = Text_Block((self.SCREEN_WIDTH-250)//2, 100, 250, 50, q_text)
         question_sign.txt_render(self.screen, (self.SCREEN_WIDTH-250)//2, 100)
 
     def draw_timer(self):
         elapsed_seconds = (pygame.time.get_ticks() - self.question_start_time) // 1000
         time_left = 20 - elapsed_seconds
-        time_sign = TextBlock((self.SCREEN_WIDTH-250)//2, self.SCREEN_HEIGHT - 160, 250, 50, f"Time left: {time_left}")
+        time_sign = Text_Block((self.SCREEN_WIDTH-250)//2, self.SCREEN_HEIGHT - 160, 250, 50, f"Time left: {time_left}")
         time_sign.txt_render(self.screen, (self.SCREEN_WIDTH-250)//2, self.SCREEN_HEIGHT - 160)
 
     def start_new_question(self):
@@ -813,5 +824,5 @@ def longest_common_substring(s1: str, s2: str) -> str:
 
 
 if __name__ == "__main__":
-    game = GameUI()
+    game = Game_UI()
     game.run()
